@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Pressure Seat</title>
+</head>
+<body>
+
+<h1>感測器數值</h1>
+<pre id="data">讀取中...</pre>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyDItFT-vVfJ4lKKRbF-WijBkQ4UrNdnCkI",
+    authDomain: "pressure-seat.firebaseapp.com",
+    databaseURL: "https://pressure-seat-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "pressure-seat",
+    storageBucket: "pressure-seat.firebasestorage.app",
+    messagingSenderId: "602813431828",
+    appId: "1:602813431828:web:e2199a92f3c09a66d96701"
+  };
+
+  // 初始化
+  firebase.initializeApp(firebaseConfig);
+
+  const db = firebase.database();
+
+  const seatRef = db.ref("seat");
+
+  // 即時監聽
+  seatRef.on("value", (snapshot) => {
+    const data = snapshot.val();
+    document.getElementById("data").textContent =
+      JSON.stringify(data, null, 2);
+  });
+</script>
+
+</body>
+</html>
