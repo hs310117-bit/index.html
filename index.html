@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Heatmap Seat</title>
+  <title>Smart Seat Dashboard</title>
 
   <style>
     body {
@@ -13,80 +13,152 @@
     }
 
     canvas {
-      margin-top: 30px;
-      border-radius: 20px;
+      margin: 20px;
       background: #222;
+      border-radius: 15px;
+    }
+
+    #status {
+      font-size: 24px;
+      margin-top: 20px;
+      font-weight: bold;
     }
   </style>
 </head>
 
 <body>
 
-<h1>🔥 壓力熱力圖</h1>
+<h1>🔥 智慧坐墊監測系統</h1>
+
+<!-- 熱力圖 -->
 <canvas id="heatmap" width="300" height="300"></canvas>
+
+<!-- 折線圖 -->
+<canvas id="chart" width="400" height="200"></canvas>
+
+<!-- 姿勢狀態 -->
+<div id="status">姿勢：偵測中...</div>
 
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
-  const firebaseConfig = {
-    apiKey: "AIzaSyDItFT-vVfJ4lKKRbF-WijBkQ4UrNdnCkI",
-    authDomain: "pressure-seat.firebaseapp.com",
-    databaseURL: "https://pressure-seat-default-rtdb.asia-southeast1.firebasedatabase.app",
-    projectId: "pressure-seat",
-    storageBucket: "pressure-seat.firebasestorage.app",
-    messagingSenderId: "602813431828",
-    appId: "1:602813431828:web:e2199a92f3c09a66d96701"
-  };
+const firebaseConfig = {
+  apiKey: "AIzaSyDItFT-vVfJ4lKKRbF-WijBkQ4UrNdnCkI",
+  authDomain: "pressure-seat.firebaseapp.com",
+  databaseURL: "https://pressure-seat-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "pressure-seat",
+  storageBucket: "pressure-seat.firebasestorage.app",
+  messagingSenderId: "602813431828",
+  appId: "1:602813431828:web:e2199a92f3c09a66d96701"
+};
 
-  firebase.initializeApp(firebaseConfig);
+firebase.initializeApp(firebaseConfig);
 
-  const db = firebase.database();
-  const seatRef = db.ref("seat");
+const db = firebase.database();
+const seatRef = db.ref("seat");
 
-  const canvas = document.getElementById("heatmap");
-  const ctx = canvas.getContext("2d");
+// ===== Heatmap =====
+const canvas = document.getElementById("heatmap");
+const ctx = canvas.getContext("2d");
 
-  function getColor(value) {
-    let ratio = value / 1000;
+function getColor(value) {
+  let ratio = value / 1000;
+  let r = Math.floor(255 * ratio);
+  let g = Math.floor(255 * (1 - Math.abs(ratio - 0.5) * 2));
+  let b = Math.floor(255 * (1 - ratio));
+  return `rgb(${r}, ${g}, ${b})`;
+}
 
-    let r = Math.floor(255 * ratio);
-    let g = Math.floor(255 * (1 - Math.abs(ratio - 0.5) * 2));
-    let b = Math.floor(255 * (1 - ratio));
+function drawHeatmap(data) {
+  ctx.clearRect(0, 0, 300, 300);
 
-    return `rgb(${r}, ${g}, ${b})`;
+  const pos = [
+    [50, 50],[150, 50],[250, 50],
+    [50, 200],[150, 200],[250, 200]
+  ];
+
+  for (let i = 0; i < 6; i++) {
+    let val = data[`sensor${i+1}`] || 0;
+    let [x,y] = pos[i];
+
+    let g = ctx.createRadialGradient(x,y,10,x,y,80);
+    g.addColorStop(0, getColor(val));
+    g.addColorStop(1, "transparent");
+
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x,y,80,0,Math.PI*2);
+    ctx.fill();
   }
+}
 
-  function drawHeatmap(data) {
-    ctx.clearRect(0, 0, 300, 300);
+// ===== Chart.js =====
+const chartData = {
+  labels: [],
+  datasets: Array.from({length:6}, (_,i)=>({
+    label: `S${i+1}`,
+    data: [],
+    borderWidth: 2,
+    tension: 0.3
+  }))
+};
 
-    const positions = [
-      [50, 50], [150, 50], [250, 50],
-      [50, 200], [150, 200], [250, 200]
-    ];
-
-    for (let i = 0; i < 6; i++) {
-      let val = data[`sensor${i+1}`] || 0;
-
-      let [x, y] = positions[i];
-
-      let gradient = ctx.createRadialGradient(x, y, 10, x, y, 80);
-      gradient.addColorStop(0, getColor(val));
-      gradient.addColorStop(1, "transparent");
-
-      ctx.fillStyle = gradient;
-      ctx.beginPath();
-      ctx.arc(x, y, 80, 0, Math.PI * 2);
-      ctx.fill();
+const chart = new Chart(document.getElementById("chart"), {
+  type: "line",
+  data: chartData,
+  options: {
+    animation: false,
+    scales: {
+      y: { min: 0, max: 1000 }
     }
   }
+});
 
-  seatRef.on("value", (snapshot) => {
-    const data = snapshot.val();
-    if (data) {
-      drawHeatmap(data);
-    }
-  });
+// ===== 姿勢判斷 =====
+function checkPosture(data){
+  let left = data.sensor1 + data.sensor4;
+  let right = data.sensor3 + data.sensor6;
+  let middle = data.sensor2 + data.sensor5;
+
+  let status = document.getElementById("status");
+
+  if (Math.abs(left - right) < 100 && middle > 200){
+    status.innerText = "姿勢：良好 ✅";
+    status.style.color = "lightgreen";
+  } else {
+    status.innerText = "姿勢：不佳 ⚠️";
+    status.style.color = "red";
+  }
+}
+
+// ===== Firebase 即時更新 =====
+seatRef.on("value", (snap)=>{
+  const data = snap.val();
+  if(!data) return;
+
+  drawHeatmap(data);
+
+  // 更新圖表
+  let now = new Date().toLocaleTimeString();
+  chart.data.labels.push(now);
+
+  for(let i=0;i<6;i++){
+    chart.data.datasets[i].data.push(data[`sensor${i+1}`] || 0);
+  }
+
+  // 保留最多20筆
+  if(chart.data.labels.length > 20){
+    chart.data.labels.shift();
+    chart.data.datasets.forEach(d=>d.data.shift());
+  }
+
+  chart.update();
+
+  // 姿勢判斷
+  checkPosture(data);
+});
 </script>
 
 </body>
