@@ -23,6 +23,25 @@
       margin-top: 20px;
       font-weight: bold;
     }
+
+    table {
+      margin: 20px auto;
+      border-collapse: collapse;
+      width: 250px;
+    }
+
+    th, td {
+      border: 1px solid #444;
+      padding: 10px;
+    }
+
+    th {
+      background: #333;
+    }
+
+    td {
+      background: #222;
+    }
   </style>
 </head>
 
@@ -39,13 +58,29 @@
 <!-- 姿勢狀態 -->
 <div id="status">姿勢：偵測中...</div>
 
+<!-- 表格 -->
+<h2>📊 感測器數值</h2>
+<table>
+  <tr>
+    <th>Sensor</th>
+    <th>Value</th>
+  </tr>
+  <tr><td>S1</td><td id="s1">0</td></tr>
+  <tr><td>S2</td><td id="s2">0</td></tr>
+  <tr><td>S3</td><td id="s3">0</td></tr>
+  <tr><td>S4</td><td id="s4">0</td></tr>
+  <tr><td>S5</td><td id="s5">0</td></tr>
+  <tr><td>S6</td><td id="s6">0</td></tr>
+</table>
+
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <script>
+// Firebase 設定
 const firebaseConfig = {
-  apiKey: "AIzaSyDItFT-vVfJ4lKKRbF-WijBkQ4UrNdnCkI",
+  apiKey: "你的API KEY",
   authDomain: "pressure-seat.firebaseapp.com",
   databaseURL: "https://pressure-seat-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "pressure-seat",
@@ -116,6 +151,22 @@ const chart = new Chart(document.getElementById("chart"), {
   }
 });
 
+// ===== 表格更新 + 顏色 =====
+function colorize(id, value){
+  let el = document.getElementById(id);
+  if(value > 700) el.style.color = "red";
+  else if(value > 300) el.style.color = "orange";
+  else el.style.color = "lightgreen";
+}
+
+function updateTable(data){
+  for(let i=1;i<=6;i++){
+    let val = data[`sensor${i}`] || 0;
+    document.getElementById(`s${i}`).innerText = val;
+    colorize(`s${i}`, val);
+  }
+}
+
 // ===== 姿勢判斷 =====
 function checkPosture(data){
   let left = data.sensor1 + data.sensor4;
@@ -139,6 +190,8 @@ seatRef.on("value", (snap)=>{
   if(!data) return;
 
   drawHeatmap(data);
+  updateTable(data);
+  checkPosture(data);
 
   // 更新圖表
   let now = new Date().toLocaleTimeString();
@@ -148,16 +201,12 @@ seatRef.on("value", (snap)=>{
     chart.data.datasets[i].data.push(data[`sensor${i+1}`] || 0);
   }
 
-  // 保留最多20筆
   if(chart.data.labels.length > 20){
     chart.data.labels.shift();
     chart.data.datasets.forEach(d=>d.data.shift());
   }
 
   chart.update();
-
-  // 姿勢判斷
-  checkPosture(data);
 });
 </script>
 
