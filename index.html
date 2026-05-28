@@ -49,23 +49,18 @@
 
 <h1>🔥 智慧坐墊監測系統</h1>
 
-<!-- 熱力圖 -->
 <canvas id="heatmap" width="300" height="300"></canvas>
 
-<!-- 折線圖 -->
 <canvas id="chart" width="400" height="200"></canvas>
 
-<!-- 姿勢狀態 -->
 <div id="status">姿勢：偵測中...</div>
 
-<!-- 表格 -->
 <h2>📊 感測器數值</h2>
 <table>
   <tr>
     <th>Sensor</th>
     <th>Value</th>
   </tr>
-
   <tr><td>S1</td><td id="s1">0</td></tr>
   <tr><td>S2</td><td id="s2">0</td></tr>
   <tr><td>S3</td><td id="s3">0</td></tr>
@@ -95,23 +90,21 @@ const db = firebase.database();
 const seatRef = db.ref("seat");
 
 
-// ===== Heatmap =====
+// ===== 1. Heatmap (7色階調整) =====
 const canvas = document.getElementById("heatmap");
 const ctx = canvas.getContext("2d");
 
 function getColor(value) {
-
-  let ratio = value / 1000;
-
-  let r = Math.floor(255 * ratio);
-  let g = Math.floor(255 * (1 - Math.abs(ratio - 0.5) * 2));
-  let b = Math.floor(255 * (1 - ratio));
-
-  return `rgb(${r}, ${g}, ${b})`;
+  if (value < 666)  return "rgb(255, 0, 0)";       // 紅色 (0~665)
+  if (value < 1333) return "rgb(255, 165, 0)";     // 橙色 (666~1332)
+  if (value < 1999) return "rgb(255, 255, 0)";     // 黃色 (1333~1998)
+  if (value < 2665) return "rgb(0, 128, 0)";       // 綠色 (1999~2664)
+  if (value < 3331) return "rgb(0, 0, 255)";       // 藍色 (2665~3330)
+  if (value < 4000) return "rgb(75, 0, 130)";      // 靛色 (3331~3999)
+  return "rgb(128, 0, 128);";                      // 紫色 (4000以上)
 }
 
 function drawHeatmap(data) {
-
   ctx.clearRect(0, 0, 300, 300);
 
   // 四個感測器位置
@@ -123,54 +116,41 @@ function drawHeatmap(data) {
   ];
 
   for (let i = 0; i < 4; i++) {
+    let val = data[`sensor${i+1}`] !== undefined ? data[`sensor${i+1}`] : 0;
+    let [x, y] = pos[i];
 
-    let val = data[`sensor${i+1}`] || 0;
-
-    let [x,y] = pos[i];
-
-    let g = ctx.createRadialGradient(x,y,10,x,y,70);
-
+    let g = ctx.createRadialGradient(x, y, 10, x, y, 70);
     g.addColorStop(0, getColor(val));
     g.addColorStop(1, "transparent");
 
     ctx.fillStyle = g;
-
     ctx.beginPath();
-    ctx.arc(x,y,70,0,Math.PI*2);
+    ctx.arc(x, y, 70, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
 
-// ===== Chart.js =====
+// ===== 2. Chart.js (縱座標改為 0~4000) =====
 const chartData = {
-
   labels: [],
-
-  datasets: Array.from({length:4}, (_,i)=>({
-
+  datasets: Array.from({length: 4}, (_, i) => ({
     label: `S${i+1}`,
     data: [],
     borderWidth: 2,
     tension: 0.3
-
   }))
 };
 
 const chart = new Chart(document.getElementById("chart"), {
-
   type: "line",
-
   data: chartData,
-
   options: {
-
     animation: false,
-
     scales: {
       y: {
         min: 0,
-        max: 1000
+        max: 4000 // 修改此處：縱座標上限調整為 4000
       }
     }
   }
@@ -178,92 +158,97 @@ const chart = new Chart(document.getElementById("chart"), {
 
 
 // ===== 表格更新 =====
-function colorize(id, value){
-
+function colorize(id, value) {
   let el = document.getElementById(id);
-
-  if(value > 700){
+  // 因應數值改到 4000，稍微調整一下文字顏色級距提示（可依需求自行修改）
+  if (value > 2665) {
     el.style.color = "red";
-  }
-
-  else if(value > 300){
+  } else if (value > 1333) {
     el.style.color = "orange";
-  }
-
-  else{
+  } else {
     el.style.color = "lightgreen";
   }
 }
 
-function updateTable(data){
-
-  for(let i=1;i<=4;i++){
-
-    let val = data[`sensor${i}`] || 0;
-
+function updateTable(data) {
+  for (let i = 1; i <= 4; i++) {
+    let val = data[`sensor${i}`] !== undefined ? data[`sensor${i}`] : 0;
     document.getElementById(`s${i}`).innerText = val;
-
     colorize(`s${i}`, val);
   }
 }
 
 
-// ===== 姿勢判斷 =====
-function checkPosture(data){
+// ===== 3. 坐姿判定邏輯升級 =====
+// 輔助函式：判斷數值是否在目標值 +/- 誤差範圍內
+function inRange(val, target, tolerance) {
+  return val >= (target - tolerance) && val <= (target + tolerance);
+}
 
-  let left = data.sensor1 + data.sensor3;
-
-  let right = data.sensor2 + data.sensor4;
+function checkPosture(data) {
+  const s1 = data.sensor1 !== undefined ? data.sensor1 : 0;
+  const s2 = data.sensor2 !== undefined ? data.sensor2 : 0;
+  const s3 = data.sensor3 !== undefined ? data.sensor3 : 0;
+  const s4 = data.sensor4 !== undefined ? data.sensor4 : 0;
 
   let status = document.getElementById("status");
 
-  if(Math.abs(left - right) < 150){
+  // 條件 A：良好坐姿
+  const isGood = inRange(s1, 1200, 200) && 
+                 inRange(s2, 2300, 250) && 
+                 inRange(s3, 1200, 200) && 
+                 inRange(s4, 2300, 250);
 
-    status.innerText = "姿勢：良好 ✅";
+  // 條件 B：翹二郎腿
+  const isCrossedLegs = inRange(s1, 0, 100) && 
+                        inRange(s2, 3500, 500) && 
+                        inRange(s3, 600, 200) && 
+                        inRange(s4, 1800, 200);
 
+  // 條件 C：重心前移
+  const isLeanForward = inRange(s1, 1700, 200) && 
+                        inRange(s2, 1700, 200) && 
+                        inRange(s3, 1700, 200) && 
+                        inRange(s4, 1700, 200);
+
+  if (isGood) {
+    status.innerText = "姿勢：良好坐姿 ✅";
     status.style.color = "lightgreen";
-  }
-
-  else{
-
-    status.innerText = "姿勢：歪斜 ⚠️";
-
+  } else if (isCrossedLegs) {
+    status.innerText = "姿勢：翹二郎腿 ⚠️";
+    status.style.color = "orange";
+  } else if (isLeanForward) {
+    status.innerText = "姿勢：重心前移 ⚠️";
+    status.style.color = "cyan";
+  } else {
+    status.innerText = "姿勢：其他/歪斜 ❌";
     status.style.color = "red";
   }
 }
 
 
 // ===== Firebase 即時更新 =====
-seatRef.on("value", (snap)=>{
-
+seatRef.on("value", (snap) => {
   const data = snap.val();
-
-  if(!data) return;
+  if (!data) return;
 
   drawHeatmap(data);
-
   updateTable(data);
-
   checkPosture(data);
 
-  // 更新圖表
+  // 更新圖表 (只要 Firebase 有觸發，即使數值為 0 也會持續在時間軸更新)
   let now = new Date().toLocaleTimeString();
-
   chart.data.labels.push(now);
 
-  for(let i=0;i<4;i++){
-
-    chart.data.datasets[i].data.push(
-      data[`sensor${i+1}`] || 0
-    );
+  for (let i = 0; i < 4; i++) {
+    let val = data[`sensor${i+1}`] !== undefined ? data[`sensor${i+1}`] : 0;
+    chart.data.datasets[i].data.push(val);
   }
 
-  // 最多保留20筆
-  if(chart.data.labels.length > 20){
-
+  // 最多保留 20 筆歷史紀錄
+  if (chart.data.labels.length > 20) {
     chart.data.labels.shift();
-
-    chart.data.datasets.forEach(d=>d.data.shift());
+    chart.data.datasets.forEach(d => d.data.shift());
   }
 
   chart.update();
