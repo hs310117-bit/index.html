@@ -483,149 +483,185 @@
 
     function checkPosture(data) {
 
-      let s1 =
-        data.sensor1 || 0;
+    // 轉成數字
+    let s1 = Number(data.sensor1) || 0;
+    let s2 = Number(data.sensor2) || 0;
+    let s3 = Number(data.sensor3) || 0;
+    let s4 = Number(data.sensor4) || 0;
 
-      let s2 =
-        data.sensor2 || 0;
-
-      let s3 =
-        data.sensor3 || 0;
-
-      let s4 =
-        data.sensor4 || 0;
-
-      let status =
+    let status =
         document.getElementById("status");
 
-      // =====================================
-      // 良好坐姿
-      // =====================================
+    // ==========================
+    // 除錯資訊
+    // ==========================
 
-      let good =
+    console.log("==========");
+    console.log("目前數值");
+
+    console.log(
+        "S1 =", s1,
+        "S2 =", s2,
+        "S3 =", s3,
+        "S4 =", s4
+    );
+
+    // ==========================
+    // 姿勢判定
+    // ==========================
+
+    let good =
 
         inRange(s1, 1200, 200) &&
         inRange(s2, 2500, 500) &&
         inRange(s3, 1200, 200) &&
         inRange(s4, 2500, 500);
 
-      // =====================================
-      // 翹二郎腿
-      // =====================================
-
-      let crossLeg =
+    let crossLeg =
 
         inRange(s1, 0, 100) &&
         inRange(s2, 3500, 500) &&
         inRange(s3, 600, 200) &&
         inRange(s4, 3000, 500);
 
-      // =====================================
-      // 重心前移
-      // =====================================
-
-      let forward =
+    let forward =
 
         inRange(s1, 1700, 300) &&
         inRange(s2, 1800, 300) &&
         inRange(s3, 1700, 300) &&
         inRange(s4, 1800, 300);
 
-      // =====================================
-      // 是否有人坐著
-      // =====================================
+    console.log(
+        "good =", good,
+        "crossLeg =", crossLeg,
+        "forward =", forward
+    );
 
-      let total =
+    // ==========================
+    // 是否有人坐著
+    // ==========================
+
+    let total =
         s1 + s2 + s3 + s4;
 
-      let sitting =
+    let sitting =
         total > 1000;
 
-      // =====================================
-      // 久坐提醒
-      // =====================================
+    console.log(
+        "total =", total,
+        "sitting =", sitting
+    );
 
-      if (sitting) {
+    // ==========================
+    // 久坐提醒
+    // ==========================
+
+    if (sitting) {
 
         if (!sittingStartTime) {
 
-          sittingStartTime =
-            Date.now();
+            sittingStartTime =
+                Date.now();
         }
 
         let sittingMinutes =
 
-          (Date.now() -
-            sittingStartTime)
+            (Date.now() -
+                sittingStartTime)
 
-          / 1000 / 60;
+            / 1000 / 60;
 
-        // 超過30分鐘
+        console.log(
+            "sittingMinutes =",
+            sittingMinutes
+        );
+
         if (sittingMinutes >= 30) {
 
-          status.innerText =
-            "⚠️ 久坐超過30分鐘";
+            console.log(
+                "判定結果：久坐"
+            );
 
-          status.style.color =
-            "orange";
+            status.innerText =
+                "⚠️ 久坐超過30分鐘";
 
-          playAlert();
+            status.style.color =
+                "orange";
 
-          return;
+            playAlert();
+
+            return;
         }
-      }
+    }
 
-      else {
+    else {
 
         sittingStartTime = null;
-      }
-
-      // =====================================
-      // 姿勢結果
-      // =====================================
-
-      if (good) {
-
-        status.innerText =
-          "姿勢：良好坐姿 ✅";
-
-        status.style.color =
-          "lightgreen";
-      }
-
-      else if (crossLeg) {
-
-        status.innerText =
-          "姿勢：翹二郎腿 ⚠️";
-
-        status.style.color =
-          "orange";
-
-        playAlert();
-      }
-
-      else if (forward) {
-
-        status.innerText =
-          "姿勢：重心前移 ⚠️";
-
-        status.style.color =
-          "yellow";
-
-        playAlert();
-      }
-
-      else {
-
-        status.innerText =
-          "姿勢：未知姿勢 ❓";
-
-        status.style.color =
-          "red";
-
-        playAlert();
-      }
     }
+
+    // ==========================
+    // 最終姿勢判定
+    // ==========================
+
+    if (good) {
+
+        console.log(
+            "判定結果：良好坐姿"
+        );
+
+        status.innerText =
+            "姿勢：良好坐姿 ✅";
+
+        status.style.color =
+            "lightgreen";
+    }
+
+    else if (crossLeg) {
+
+        console.log(
+            "判定結果：翹二郎腿"
+        );
+
+        status.innerText =
+            "姿勢：翹二郎腿 ⚠️";
+
+        status.style.color =
+            "orange";
+
+        playAlert();
+    }
+
+    else if (forward) {
+
+        console.log(
+            "判定結果：重心前移"
+        );
+
+        status.innerText =
+            "姿勢：重心前移 ⚠️";
+
+        status.style.color =
+            "yellow";
+
+        playAlert();
+    }
+
+    else {
+
+        console.log(
+            "判定結果：未知姿勢"
+        );
+
+        status.innerText =
+            "姿勢：未知姿勢 ❓";
+
+        status.style.color =
+            "red";
+
+        playAlert();
+    }
+}
+
 
     // =========================================
     // Firebase 即時更新
