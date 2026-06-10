@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html>
+
 <head>
   <meta charset="UTF-8">
   <title>Smart Seat Dashboard</title>
@@ -30,7 +31,8 @@
       width: 250px;
     }
 
-    th, td {
+    th,
+    td {
       border: 1px solid #444;
       padding: 10px;
     }
@@ -47,229 +49,465 @@
 
 <body>
 
-<h1>🔥 智慧坐墊監測系統</h1>
+  <h1>🔥 智慧坐墊監測系統</h1>
 
-<!-- 熱力圖 -->
-<canvas id="heatmap" width="300" height="300"></canvas>
+  <!-- 熱力圖 -->
+  <canvas id="heatmap" width="300" height="300"></canvas>
 
-<!-- 折線圖 -->
-<canvas id="chart" width="400" height="200"></canvas>
+  <!-- 折線圖 -->
+  <canvas id="chart" width="400" height="200"></canvas>
 
-<!-- 姿勢狀態 -->
-<div id="status">姿勢：偵測中...</div>
+  <!-- 姿勢狀態 -->
+  <div id="status">姿勢：偵測中...</div>
 
-<!-- 表格 -->
-<h2>📊 感測器數值</h2>
-<table>
-  <tr>
-    <th>Sensor</th>
-    <th>Value</th>
-  </tr>
+  <!-- 表格 -->
+  <h2>📊 感測器數值</h2>
 
-  <tr><td>S1</td><td id="s1">0</td></tr>
-  <tr><td>S2</td><td id="s2">0</td></tr>
-  <tr><td>S3</td><td id="s3">0</td></tr>
-  <tr><td>S4</td><td id="s4">0</td></tr>
-</table>
+  <table>
+    <tr>
+      <th>Sensor</th>
+      <th>Value</th>
+    </tr>
 
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <tr>
+      <td>S1</td>
+      <td id="s1">0</td>
+    </tr>
 
-<script>
+    <tr>
+      <td>S2</td>
+      <td id="s2">0</td>
+    </tr>
 
-// Firebase 設定
-const firebaseConfig = {
-  apiKey: "AIzaSyDItFT-vVfJ4lKKRbF-WijBkQ4UrNdnCkI",
-  authDomain: "pressure-seat.firebaseapp.com",
-  databaseURL: "https://pressure-seat-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "pressure-seat",
-  storageBucket: "pressure-seat.firebasestorage.app",
-  messagingSenderId: "602813431828",
-  appId: "1:602813431828:web:e2199a92f3c09a66d96701"
-};
+    <tr>
+      <td>S3</td>
+      <td id="s3">0</td>
+    </tr>
 
-firebase.initializeApp(firebaseConfig);
+    <tr>
+      <td>S4</td>
+      <td id="s4">0</td>
+    </tr>
+  </table>
 
-const db = firebase.database();
-const seatRef = db.ref("seat");
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
+  <script>
 
-// ===== Heatmap =====
-const canvas = document.getElementById("heatmap");
-const ctx = canvas.getContext("2d");
+    // ===== Firebase 設定 =====
+    const firebaseConfig = {
+      apiKey: "AIzaSyDItFT-vVfJ4lKKRbF-WijBkQ4UrNdnCkI",
+      authDomain: "pressure-seat.firebaseapp.com",
+      databaseURL: "https://pressure-seat-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "pressure-seat",
+      storageBucket: "pressure-seat.firebasestorage.app",
+      messagingSenderId: "602813431828",
+      appId: "1:602813431828:web:e2199a92f3c09a66d96701"
+    };
 
-function getColor(value) {
+    firebase.initializeApp(firebaseConfig);
 
-  let ratio = value / 1000;
+    const db = firebase.database();
+    const seatRef = db.ref("seat");
 
-  let r = Math.floor(255 * ratio);
-  let g = Math.floor(255 * (1 - Math.abs(ratio - 0.5) * 2));
-  let b = Math.floor(255 * (1 - ratio));
+    // ===== 最新感測資料 =====
+    let latestData = {
+      sensor1: 0,
+      sensor2: 0,
+      sensor3: 0,
+      sensor4: 0
+    };
 
-  return `rgb(${r}, ${g}, ${b})`;
-}
+    // ===== 久坐提醒 =====
+    let sittingStartTime = null;
 
-function drawHeatmap(data) {
+    // ===== 聲音冷卻 =====
+    let lastAlertTime = 0;
 
-  ctx.clearRect(0, 0, 300, 300);
+    // ===== 聲音提醒 =====
+    function playAlert() {
 
-  // 四個感測器位置
-  const pos = [
-    [100, 100], // S1
-    [200, 100], // S2
-    [100, 200], // S3
-    [200, 200]  // S4
-  ];
+      let now = Date.now();
 
-  for (let i = 0; i < 4; i++) {
+      // 防止一直狂叫（10秒冷卻）
+      if (now - lastAlertTime < 10000) return;
 
-    let val = data[`sensor${i+1}`] || 0;
+      lastAlertTime = now;
 
-    let [x,y] = pos[i];
+      const audioCtx = new(window.AudioContext || window.webkitAudioContext)();
 
-    let g = ctx.createRadialGradient(x,y,10,x,y,70);
+      const oscillator = audioCtx.createOscillator();
 
-    g.addColorStop(0, getColor(val));
-    g.addColorStop(1, "transparent");
+      const gainNode = audioCtx.createGain();
 
-    ctx.fillStyle = g;
+      oscillator.connect(gainNode);
+      gainNode.connect(audioCtx.destination);
 
-    ctx.beginPath();
-    ctx.arc(x,y,70,0,Math.PI*2);
-    ctx.fill();
-  }
-}
+      oscillator.type = "sine";
 
+      oscillator.frequency.setValueAtTime(
+        800,
+        audioCtx.currentTime
+      );
 
-// ===== Chart.js =====
-const chartData = {
+      oscillator.start();
 
-  labels: [],
+      gainNode.gain.exponentialRampToValueAtTime(
+        0.0001,
+        audioCtx.currentTime + 1
+      );
 
-  datasets: Array.from({length:4}, (_,i)=>({
+      oscillator.stop(audioCtx.currentTime + 1);
+    }
 
-    label: `S${i+1}`,
-    data: [],
-    borderWidth: 2,
-    tension: 0.3
+    // ===== Heatmap =====
+    const canvas = document.getElementById("heatmap");
 
-  }))
-};
+    const ctx = canvas.getContext("2d");
 
-const chart = new Chart(document.getElementById("chart"), {
+    // ===== 顏色判斷 =====
+    function getColor(value) {
 
-  type: "line",
+      if (value < 666) {
+        return "red";
+      }
 
-  data: chartData,
+      else if (value < 1333) {
+        return "orange";
+      }
 
-  options: {
+      else if (value < 1999) {
+        return "yellow";
+      }
 
-    animation: false,
+      else if (value < 2665) {
+        return "green";
+      }
 
-    scales: {
-      y: {
-        min: 0,
-        max: 1000
+      else if (value < 3331) {
+        return "blue";
+      }
+
+      else if (value < 4000) {
+        return "indigo";
+      }
+
+      else {
+        return "violet";
       }
     }
-  }
-});
 
+    // ===== 畫熱力圖 =====
+    function drawHeatmap(data) {
 
-// ===== 表格更新 =====
-function colorize(id, value){
+      // 整個背景設成紅色
+      ctx.fillStyle = "red";
 
-  let el = document.getElementById(id);
+      ctx.fillRect(0, 0, 300, 300);
 
-  if(value > 700){
-    el.style.color = "red";
-  }
+      // 四個感測器位置
+      const pos = [
+        [100, 100],
+        [200, 100],
+        [100, 200],
+        [200, 200]
+      ];
 
-  else if(value > 300){
-    el.style.color = "orange";
-  }
+      for (let i = 0; i < 4; i++) {
 
-  else{
-    el.style.color = "lightgreen";
-  }
-}
+        let val = data[`sensor${i + 1}`] || 0;
 
-function updateTable(data){
+        let [x, y] = pos[i];
 
-  for(let i=1;i<=4;i++){
+        let color = getColor(val);
 
-    let val = data[`sensor${i}`] || 0;
+        // 建立漸層
+        let gradient = ctx.createRadialGradient(
+          x, y, 10,
+          x, y, 90
+        );
 
-    document.getElementById(`s${i}`).innerText = val;
+        gradient.addColorStop(0, color);
 
-    colorize(`s${i}`, val);
-  }
-}
+        gradient.addColorStop(1, "rgba(255,0,0,0)");
 
+        // 畫熱區
+        ctx.fillStyle = gradient;
 
-// ===== 姿勢判斷 =====
-function checkPosture(data){
+        ctx.beginPath();
 
-  let left = data.sensor1 + data.sensor3;
+        ctx.arc(x, y, 90, 0, Math.PI * 2);
 
-  let right = data.sensor2 + data.sensor4;
+        ctx.fill();
 
-  let status = document.getElementById("status");
+        // 中心圓
+        ctx.beginPath();
 
-  if(Math.abs(left - right) < 150){
+        ctx.fillStyle = color;
 
-    status.innerText = "姿勢：良好 ✅";
+        ctx.arc(x, y, 18, 0, Math.PI * 2);
 
-    status.style.color = "lightgreen";
-  }
+        ctx.fill();
 
-  else{
+        // 顯示數值
+        ctx.fillStyle = "white";
 
-    status.innerText = "姿勢：歪斜 ⚠️";
+        ctx.font = "bold 16px Arial";
 
-    status.style.color = "red";
-  }
-}
+        ctx.textAlign = "center";
 
+        ctx.fillText(val, x, y + 5);
+      }
+    }
 
-// ===== Firebase 即時更新 =====
-seatRef.on("value", (snap)=>{
+    // ===== 折線圖 =====
+    const chartData = {
 
-  const data = snap.val();
+      labels: [],
 
-  if(!data) return;
+      datasets: Array.from({ length: 4 }, (_, i) => ({
 
-  drawHeatmap(data);
+        label: `S${i + 1}`,
 
-  updateTable(data);
+        data: [],
 
-  checkPosture(data);
+        borderWidth: 2,
 
-  // 更新圖表
-  let now = new Date().toLocaleTimeString();
+        tension: 0.3
 
-  chart.data.labels.push(now);
+      }))
+    };
 
-  for(let i=0;i<4;i++){
+    const chart = new Chart(
+      document.getElementById("chart"),
+      {
 
-    chart.data.datasets[i].data.push(
-      data[`sensor${i+1}`] || 0
+        type: "line",
+
+        data: chartData,
+
+        options: {
+
+          animation: false,
+
+          scales: {
+
+            y: {
+              min: 0,
+              max: 4000
+            }
+          }
+        }
+      }
     );
-  }
 
-  // 最多保留20筆
-  if(chart.data.labels.length > 20){
+    // ===== 表格顏色 =====
+    function colorize(id, value) {
 
-    chart.data.labels.shift();
+      let el = document.getElementById(id);
 
-    chart.data.datasets.forEach(d=>d.data.shift());
-  }
+      if (value > 3000) {
+        el.style.color = "violet";
+      }
 
-  chart.update();
-});
+      else if (value > 2000) {
+        el.style.color = "blue";
+      }
 
-</script>
+      else if (value > 1000) {
+        el.style.color = "yellow";
+      }
+
+      else {
+        el.style.color = "lightgreen";
+      }
+    }
+
+    // ===== 更新表格 =====
+    function updateTable(data) {
+
+      for (let i = 1; i <= 4; i++) {
+
+        let val = data[`sensor${i}`] || 0;
+
+        document.getElementById(`s${i}`).innerText = val;
+
+        colorize(`s${i}`, val);
+      }
+    }
+
+    // ===== 範圍判定 =====
+    function inRange(value, target, tolerance) {
+
+      return Math.abs(value - target)
+        <= tolerance;
+    }
+
+    // ===== 姿勢判定 =====
+    function checkPosture(data) {
+
+      let s1 = data.sensor1 || 0;
+      let s2 = data.sensor2 || 0;
+      let s3 = data.sensor3 || 0;
+      let s4 = data.sensor4 || 0;
+
+      let status = document.getElementById("status");
+
+      // ===== 良好坐姿 =====
+      let good =
+
+        inRange(s1, 1200, 200) &&
+        inRange(s2, 2300, 250) &&
+        inRange(s3, 1200, 200) &&
+        inRange(s4, 2300, 250);
+
+      // ===== 翹二郎腿 =====
+      let crossLeg =
+
+        inRange(s1, 0, 100) &&
+        inRange(s2, 3500, 500) &&
+        inRange(s3, 600, 200) &&
+        inRange(s4, 1800, 200);
+
+      // ===== 重心前移 =====
+      let forward =
+
+        inRange(s1, 1700, 200) &&
+        inRange(s2, 1700, 200) &&
+        inRange(s3, 1700, 200) &&
+        inRange(s4, 1700, 200);
+
+      // ===== 是否有人坐著 =====
+      let total = s1 + s2 + s3 + s4;
+
+      let sitting = total > 1000;
+
+      // ===== 久坐提醒 =====
+      if (sitting) {
+
+        if (!sittingStartTime) {
+
+          sittingStartTime = Date.now();
+        }
+
+        let sittingMinutes =
+
+          (Date.now() - sittingStartTime)
+          / 1000 / 60;
+
+        // 超過30分鐘
+        if (sittingMinutes >= 30) {
+
+          status.innerText =
+            "⚠️ 久坐超過30分鐘，請起身活動";
+
+          status.style.color = "orange";
+
+          playAlert();
+
+          return;
+        }
+      }
+
+      else {
+
+        sittingStartTime = null;
+      }
+
+      // ===== 姿勢判定 =====
+      if (good) {
+
+        status.innerText =
+          "姿勢：良好坐姿 ✅";
+
+        status.style.color =
+          "lightgreen";
+      }
+
+      else if (crossLeg) {
+
+        status.innerText =
+          "姿勢：翹二郎腿 ⚠️";
+
+        status.style.color =
+          "orange";
+
+        playAlert();
+      }
+
+      else if (forward) {
+
+        status.innerText =
+          "姿勢：重心前移 ⚠️";
+
+        status.style.color =
+          "yellow";
+
+        playAlert();
+      }
+
+      else {
+
+        status.innerText =
+          "姿勢：未知姿勢 ❓";
+
+        status.style.color =
+          "red";
+
+        playAlert();
+      }
+    }
+
+    // ===== Firebase 即時更新 =====
+    seatRef.on("value", (snap) => {
+
+      const data = snap.val();
+
+      if (!data) return;
+
+      latestData = data;
+
+      drawHeatmap(data);
+
+      updateTable(data);
+
+      checkPosture(data);
+    });
+
+    // ===== 每秒更新折線圖 =====
+    setInterval(() => {
+
+      let now =
+        new Date().toLocaleTimeString();
+
+      chart.data.labels.push(now);
+
+      for (let i = 0; i < 4; i++) {
+
+        chart.data.datasets[i].data.push(
+
+          latestData[`sensor${i + 1}`] || 0
+        );
+      }
+
+      // 最多保留20筆
+      if (chart.data.labels.length > 20) {
+
+        chart.data.labels.shift();
+
+        chart.data.datasets.forEach(d =>
+          d.data.shift()
+        );
+      }
+
+      chart.update();
+
+    }, 1000);
+
+  </script>
 
 </body>
+
 </html>
